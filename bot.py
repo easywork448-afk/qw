@@ -1,3 +1,63 @@
+ADMIN_ID = 8208248742  # Ваш Telegram user_id
+from db import set_balance
+# --- Админ-команды ---
+@dp.message_handler(lambda m: m.from_user.id == ADMIN_ID and m.text.startswith('/admin'))
+async def admin_panel(message: types.Message):
+    text = (
+        "Админ-панель\n"
+        "/add_balance <user_id> <amount> — добавить баланс пользователю\n"
+        "/ban <user_id> — забанить пользователя\n"
+        "/unban <user_id> — разбанить пользователя\n"
+        "/users — список пользователей"
+    )
+    await message.answer(text)
+
+# Бан-лист (в памяти, для простоты)
+banned_users = set()
+
+@dp.message_handler(lambda m: m.from_user.id == ADMIN_ID and m.text.startswith('/add_balance'))
+async def add_balance_cmd(message: types.Message):
+    try:
+        _, uid, amount = message.text.split()
+        uid = int(uid)
+        amount = float(amount)
+        set_balance(uid, amount)
+        await message.answer(f'Баланс пользователя {uid} установлен: {amount} TON')
+    except Exception as e:
+        await message.answer(f'Ошибка: {e}')
+
+@dp.message_handler(lambda m: m.from_user.id == ADMIN_ID and m.text.startswith('/ban'))
+async def ban_cmd(message: types.Message):
+    try:
+        _, uid = message.text.split()
+        uid = int(uid)
+        banned_users.add(uid)
+        await message.answer(f'Пользователь {uid} забанен.')
+    except Exception as e:
+        await message.answer(f'Ошибка: {e}')
+
+@dp.message_handler(lambda m: m.from_user.id == ADMIN_ID and m.text.startswith('/unban'))
+async def unban_cmd(message: types.Message):
+    try:
+        _, uid = message.text.split()
+        uid = int(uid)
+        banned_users.discard(uid)
+        await message.answer(f'Пользователь {uid} разбанен.')
+    except Exception as e:
+        await message.answer(f'Ошибка: {e}')
+
+@dp.message_handler(lambda m: m.from_user.id == ADMIN_ID and m.text.startswith('/users'))
+async def users_cmd(message: types.Message):
+    import sqlite3
+    conn = sqlite3.connect('users.db')
+    cur = conn.execute('SELECT user_id, balance FROM users')
+    users = cur.fetchall()
+    conn.close()
+    if users:
+        text = '\n'.join([f'ID: {u[0]}, Баланс: {u[1]}' for u in users])
+    else:
+        text = 'Нет пользователей.'
+    await message.answer(text)
 import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
@@ -78,6 +138,9 @@ async def safe_delete(msg):
 
 @dp.message_handler(commands=["start"])
 async def start_handler(message: types.Message):
+    if message.from_user.id in banned_users:
+        await message.answer("Вы забанены.")
+        return
     if message.chat.type == "private":
         await message.answer(WELCOME_TEXT, reply_markup=main_menu_inline())
 
@@ -99,7 +162,18 @@ async def inline_menu_handler(call: types.CallbackQuery):
         await call.message.edit_text(text, reply_markup=main_menu_inline(lang))
     elif call.data == "deposit":
         ton_addr = "UQAfR6kseWxX-cH5DzpOH-mKWn6oidyL5ynM4SGNiabU2qCJ"
-        text = f"Для пополнения переведите TON на адрес:\n<code>{ton_addr}</code>" if lang == 'ru' else f"To deposit, send TON to address:\n<code>{ton_addr}</code>"
+        if lang == 'ru':
+            text = (
+                f"Для пополнения переведите TON на адрес:\n<code>{ton_addr}</code>\n\n"
+                "После перевода обязательно напишите в поддержку (@YourSupport) и приложите скриншот или ссылку на транзакцию. "
+                "Без подтверждения пополнение не будет зачислено!"
+            )
+        else:
+            text = (
+                f"To deposit, send TON to address:\n<code>{ton_addr}</code>\n\n"
+                "After sending, be sure to contact support (@YourSupport) and attach a screenshot or transaction link. "
+                "Without confirmation, the deposit will not be credited!"
+            )
         await call.message.edit_text(text, parse_mode="HTML", reply_markup=main_menu_inline(lang))
     elif call.data == "course":
         ton, usdt = await get_ton_usdt_rate()
