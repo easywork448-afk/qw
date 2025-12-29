@@ -1,3 +1,8 @@
+
+# ...инициализация bot, dp и переменных...
+
+# ...existing code...
+
 import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
@@ -17,6 +22,30 @@ WELCOME_TEXT = (
     "🚀 RedoCase — это бот-кошелёк/криптобот для получения, отправки, покупки и хранения криптовалюты в Telegram."
     "\n\nОбо всех возможностях читай в официальном канале: https://t.me/+7KgLGnOLv8dmNDMx"
 )
+
+def admin_menu_kb():
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    import sqlite3
+    conn = sqlite3.connect('users.db')
+    cur = conn.execute('SELECT user_id FROM users')
+    users = cur.fetchall()
+    conn.close()
+    if users:
+        for u in users:
+            kb.add(types.InlineKeyboardButton(f"ID: {u[0]}", callback_data=f"admin_user_{u[0]}"))
+    kb.add(
+        types.InlineKeyboardButton("Добавить баланс", callback_data="admin_add_balance"),
+        types.InlineKeyboardButton("Бан", callback_data="admin_ban"),
+        types.InlineKeyboardButton("Разбан", callback_data="admin_unban"),
+        types.InlineKeyboardButton("Обновить", callback_data="admin_refresh")
+    )
+    return kb
+@dp.message_handler(commands=["admin"])
+async def admin_panel_handler(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        await message.answer("Админ-панель:", reply_markup=admin_menu_kb())
+    else:
+        await message.answer("У вас нет доступа к админ-панели.")
 
 popular_currencies = ['TON', 'USDT', 'BTC', 'ETH']
 admin_balance_state = {}
@@ -202,7 +231,6 @@ async def start_handler(message: types.Message):
         return
     if message.chat.type == "private":
         await message.answer(WELCOME_TEXT, reply_markup=main_menu_inline())
-        await message.answer("", reply_markup=types.ReplyKeyboardRemove())
 
 @dp.callback_query_handler(lambda c: c.data in ["balance", "deposit", "course", "ref", "support", "logout", "mainmenu", "history", "langswitch"] or c.data.startswith("course_"))
 async def inline_menu_handler(call: types.CallbackQuery):
@@ -219,7 +247,11 @@ async def inline_menu_handler(call: types.CallbackQuery):
         else:
             rate_text = ""
         text = (f"Ваш баланс: {balance:.4f} TON" if lang == 'ru' else f"Your balance: {balance:.4f} TON") + rate_text
-        await call.message.edit_text(text, parse_mode="HTML", reply_markup=main_menu_inline(lang))
+        try:
+            await call.message.edit_text(text, parse_mode="HTML", reply_markup=main_menu_inline(lang))
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                raise
     elif call.data == "deposit":
         ton_addr = "UQAfR6kseWxX-cH5DzpOH-mKWn6oidyL5ynM4SGNiabU2qCJ"
         if lang == 'ru':
@@ -234,21 +266,41 @@ async def inline_menu_handler(call: types.CallbackQuery):
                 "After sending, be sure to contact support (@RedoBotSupport) and attach a screenshot or transaction link. "
                 "Without confirmation, the deposit will not be credited!"
             )
-        await call.message.edit_text(text, parse_mode="HTML", reply_markup=main_menu_inline(lang))
+        try:
+            await call.message.edit_text(text, parse_mode="HTML", reply_markup=main_menu_inline(lang))
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                raise
     # Курс теперь показывается только в разделе Баланс
     elif call.data == "ref":
         ref_link = f"https://t.me/redocasebot?start={user_id}"
         text = f"Ваша реферальная ссылка:\n{ref_link}" if lang == 'ru' else f"Your referral link:\n{ref_link}"
-        await call.message.edit_text(text, reply_markup=main_menu_inline(lang))
+        try:
+            await call.message.edit_text(text, reply_markup=main_menu_inline(lang))
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                raise
     elif call.data == "support":
         text = "Временно поддержка только через Telegram: @RedobotSupport" if lang == 'ru' else "Support only via Telegram: @RedobotSupport"
-        await call.message.edit_text(text, reply_markup=main_menu_inline(lang))
+        try:
+            await call.message.edit_text(text, reply_markup=main_menu_inline(lang))
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                raise
     elif call.data == "logout":
         delete_user(user_id)
         text = "Ваши данные удалены. Для продолжения используйте /start" if lang == 'ru' else "Your data deleted. Use /start to continue."
-        await call.message.edit_text(text)
+        try:
+            await call.message.edit_text(text)
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                raise
     elif call.data == "mainmenu":
-        await call.message.edit_text(WELCOME_TEXT if lang == 'ru' else "🚀 RedoCase — crypto wallet bot for receiving, sending, buying and storing cryptocurrency in Telegram.\n\nRead about all features in the official channel: https://t.me/+7KgLGnOLv8dmNDMx", reply_markup=main_menu_inline(lang))
+        try:
+            await call.message.edit_text(WELCOME_TEXT if lang == 'ru' else "🚀 RedoCase — crypto wallet bot for receiving, sending, buying and storing cryptocurrency in Telegram.\n\nRead about all features in the official channel: https://t.me/+7KgLGnOLv8dmNDMx", reply_markup=main_menu_inline(lang))
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                raise
     elif call.data == "history":
         hist = get_history(user_id, limit=10)
         if hist:
@@ -258,10 +310,18 @@ async def inline_menu_handler(call: types.CallbackQuery):
                 text = "Last operations:\n" + "\n".join([f"{a}: {amnt} ({ts[:16]})" for a, amnt, ts in hist])
         else:
             text = "Нет операций." if lang == 'ru' else "No operations."
-        await call.message.edit_text(text, reply_markup=main_menu_inline(lang))
+        try:
+            await call.message.edit_text(text, reply_markup=main_menu_inline(lang))
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                raise
     elif call.data == "langswitch":
         user_lang[user_id] = 'en' if lang == 'ru' else 'ru'
-        await call.message.edit_text(WELCOME_TEXT if user_lang[user_id]=='ru' else "🚀 RedoCase — crypto wallet bot for receiving, sending, buying and storing cryptocurrency in Telegram.\n\nRead about all features in the official channel: https://t.me/+7KgLGnOLv8dmNDMx", reply_markup=main_menu_inline(user_lang[user_id]))
+        try:
+            await call.message.edit_text(WELCOME_TEXT if user_lang[user_id]=='ru' else "🚀 RedoCase — crypto wallet bot for receiving, sending, buying and storing cryptocurrency in Telegram.\n\nRead about all features in the official channel: https://t.me/+7KgLGnOLv8dmNDMx", reply_markup=main_menu_inline(user_lang[user_id]))
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                raise
         await call.answer()
 
 @dp.message_handler(commands=["balance"])
@@ -391,27 +451,7 @@ banned_users = set()
 
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-def admin_menu_kb():
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    import sqlite3
-    conn = sqlite3.connect('users.db')
-    cur = conn.execute('SELECT user_id FROM users')
-    users = cur.fetchall()
-    conn.close()
-    if users:
-        for u in users:
-            kb.add(types.InlineKeyboardButton(f"ID: {u[0]}", callback_data=f"admin_user_{u[0]}"))
-    kb.add(
-        types.InlineKeyboardButton("Добавить баланс", callback_data="admin_add_balance"),
-        types.InlineKeyboardButton("Бан", callback_data="admin_ban"),
-        types.InlineKeyboardButton("Разбан", callback_data="admin_unban"),
-        types.InlineKeyboardButton("Обновить", callback_data="admin_refresh")
-    )
-    return kb
-
-@dp.message_handler(lambda m: m.from_user.id == ADMIN_ID and m.text == "/admin")
-async def admin_panel(message: types.Message):
-    await message.answer("Админ-меню:", reply_markup=admin_menu_kb())
+# ...existing code...
 
 @dp.callback_query_handler(lambda c: c.data == "admin_ban" and c.from_user.id == ADMIN_ID)
 async def admin_ban_menu(call: types.CallbackQuery):
@@ -577,27 +617,7 @@ banned_users = set()
 
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-def admin_menu_kb():
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    import sqlite3
-    conn = sqlite3.connect('users.db')
-    cur = conn.execute('SELECT user_id FROM users')
-    users = cur.fetchall()
-    conn.close()
-    if users:
-        for u in users:
-            kb.add(types.InlineKeyboardButton(f"ID: {u[0]}", callback_data=f"admin_user_{u[0]}"))
-    kb.add(
-        types.InlineKeyboardButton("Добавить баланс", callback_data="admin_add_balance"),
-        types.InlineKeyboardButton("Бан", callback_data="admin_ban"),
-        types.InlineKeyboardButton("Разбан", callback_data="admin_unban"),
-        types.InlineKeyboardButton("Обновить", callback_data="admin_refresh")
-    )
-    return kb
 
-@dp.message_handler(lambda m: m.from_user.id == ADMIN_ID and m.text == "/admin")
-async def admin_panel(message: types.Message):
-    await message.answer("Админ-меню:", reply_markup=admin_menu_kb())
 
 @dp.callback_query_handler(lambda c: c.data == "admin_ban" and c.from_user.id == ADMIN_ID)
 async def admin_ban_menu(call: types.CallbackQuery):
